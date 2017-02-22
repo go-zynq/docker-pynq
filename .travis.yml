@@ -1,0 +1,42 @@
+sudo: required
+services:
+- docker
+env:
+  global:
+  - DOCKER_HUB_REPO_SLUG="gozynq/${TRAVIS_REPO_SLUG#*/}"
+  - secure: "iPmleT/+AXvCNsoPei6EAhiAVZUbK+BkQimpuQj7ukXx9haY0Eb4FBhqhK++1zRm3iXy/0m4Fyv62NOBkyOCafD8pFuAaWIGfgzBO3LaGK9MMRTSDsf3BDi/1QEN2FwmszD2kMrC3StYzpaVWLYIKSMuyrwISmQNWxK8e5OYNNcgT7lXLQzvQsc0mfaPU7BIqdGbD21Gir09nRgrHWgICWualPS4A3bOeHbojhvZVLmcR2lqE4QSKP1H6/MmH4mKmHaXPRKw+JDqpf3QZgez3RxAAha0jVPTYW1ZnFAWhwFmqd3/IWkl4NfcjC/PJ50f7UdqLigAlJaJZPA1GKUbAhO0BvLFNLR3YY7e8I3FuaTujIUKdkJ3DFk9ipaV7RtG9CPujxJp6IiMKnmTqx8irRLsQO43ydOQtaOxH9y8wAHC99px9WeKp/a+rycMnWm2EzVa/oybpJoHIK+nHGHgwUKNm8o6ln9d+0wWtkbhITr9iOpB26u12xYeIP60hw6npIvpxNIJaBiq1yyCDg+khFJ9+f7LmTzz2Lfw6PRyUVe+SDY21jsE8tg28YC91GjR06TH1x6PKRHCmy3rJDrBFnMn0yR/e05BClcnT27y9kS0j1ZbxI9mQOOnLIGYUvA+vHZzP7peWNaiqemBgSVH+nwFiUk7rq+eVSBhdS9fU54=" #DOCKER_USER
+  - secure: "M+vwv3TrSzftLGIbkzw5faLScBLfSKnsP0w08DrYe3+Ye9oKiQpCy7gwtvNA1kpohUZUg3RccjVhUUiaVI4Uuj1N1gYBcrlTCSJ4zrkMgqPtTxqnAHFxFeAu/cn3bIMmamGoKRuFC4KtN9v3DPOjzK35s0cClYGP9Ehv1ED+06j508ORKFpIQ0qIVsS0ld5cmoBfZ35KWT2+reecWgtBF6G2WGs02i/IyyOrFeXB5RuodGcMJMYfLStnsoXjM1vlIo7MR7GUasbfsJnATCDaYNqKltsxhuJF3IjX/4CO10dPcQWLbF3VJ1piXhRCarrP89rcB4S1feco6NEv2+9wPKs98tDPgRiUUXyJpvtG/eQALjmpn/W/OdS/IWA/epz2rbFXT4lhAdKBuEjJMgjsGIhOb4vaZ3Nt/y2nUeDPPRU4tjfO++VTKb4bzyX3tJdFTXZd964dP+uKlChM3Ka4ugU+/1xQUZGVNl70MVcctWX8TBMjAPWYI/J9s54Oaj0GVsgvwlulJuIGZZSlLb06gcgyLqjg66AbeY13yv1xaqC0IW7ZMOfzoEP8apxN82FIiKaOt14mymLWGOEpVz+zWczdulrpleyceZnT2wvNMbheXUL6H3tIdQIqkk23UJPaRlhvzN3AjKDq+fFbOadlgsO5Q3nN0IbpyoCJqGUV8lw=" #DOCKER_PASS
+before_install:
+# prepare qemu
+- docker run --rm --privileged multiarch/qemu-user-static:register --reset
+# get qemu-arm-static binary
+- mkdir tmp
+- >
+  pushd tmp &&
+  curl -L -o qemu-arm-static.tar.gz https://github.com/multiarch/qemu-user-static/releases/download/v2.6.0/qemu-arm-static.tar.gz &&
+  tar xzf qemu-arm-static.tar.gz &&
+  popd
+script:
+# build image
+- docker build -t ${DOCKER_HUB_REPO_SLUG}:latest .
+# test image
+- docker run -id --name build ${DOCKER_HUB_REPO_SLUG}:latest sh
+- export PYNQ_VERSION=`docker exec build env|grep PYNQ_VERSION|awk -F = '{print $2}'`
+- export PYNQ_WHEEL=pynq-${PYNQ_VERSION}-cp35-cp35m-linux_armv7l.whl
+- docker cp build:/PYNQ-${PYNQ_VERSION}/python/dist/${PYNQ_WHEEL} .
+after_success:
+# push image
+- >
+  if [ "${TRAVIS_BRANCH}" == "master" ]; then
+    docker login -u "${DOCKER_USER}" -p "${DOCKER_PASS}"
+    docker push ${DOCKER_HUB_REPO_SLUG}
+  fi
+deploy:
+  provider: releases
+  api_key:
+    secure: "CN76pIChJyW6b/UighSzH/U2FnI4rJ+HiNu/STvuubbZ3eKrBkGU98nVxbb81B9Tr3prVKm3azt9oys02wY+ap9F6wDEad3sRyt6oW6WpVSSnpYYs1z5bH0ye3HMhF4xMPsJ8F4YEa2GPzwREU7NJI1+5q6slxUVxJp3wMRuRY3KSleVVt121G0TIpXSVIMarIvPdi99XB1/Pj+jVWncyenngbT8gwSjzCyu8ysggYfnmnBh9dImyRqc/X0/k/D4B24SSnROxKN7VBLQG51wBLGfgC0ThBlFjAUNDJEk8Uq7FUgcqxbiV+eKTP9lNntjdzRd2n6it4Fd4jmFj6SsKsBIN+anxrSENl2bXbHzIyd/ClRJyo78MVeFH8Tftek0/xfJDEqZk8PIcpfp5qxpUIeH0VNUkiaD2uAG6d5IDabRYCp/yKERT1sULSrRbBw5cqG0gEPmhvSYFcQjb4zLpNzNsW8qsEcJY39G3DaVClJmLBK/rzqfgEcBxxFOtdtU7Ojd41WIVGYRe4Lc7TOGpVr7FJXJpxTqQ/avRSrZsMBSkkmIDgR8eiCXkGLkrxBm69kC0dAIRoIelGwYMcoOCTkcDonItcaZRTSGf4ZWJ/jzCleMnP0hcvYLdJdJycg6TTzZbu6IUgEWZUkJwhB2LYrB/vHWtGo2v6hSenzn/nU="
+  file:
+    - ${PYNQ_WHEEL}
+  skip_cleanup: true
+  on:
+    tags: true
